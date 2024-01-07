@@ -11,7 +11,7 @@ set debug_linker_flags=
 set release_linker_flags=-Wl,--lto-O3
 set common_linker_flags=-Wl,--no-entry -Wl,--allow-undefined -Wl,--export=init
 
-set debug=no
+set debug=yes
 
 if %debug%==yes (
    set common_compiler_flags=%common_compiler_flags% %debug_compiler_flags%

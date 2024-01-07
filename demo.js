@@ -3,9 +3,11 @@
 let application = document.getElementById("application");
 let gl = 0;
 let wasm = null;
+let memory_buffer = 0;
 
-let reference_id = 0;
-let references = [];
+// NOTE: 0 is invalid.
+let reference_id = 1;
+let references = [ 0 ];
 
 function create_new_reference(object)
 {
@@ -45,42 +47,12 @@ function convert_to_string(buffer, string_address)
     return new TextDecoder().decode(bytes);
 }
 
+function create_graphics()
+{
+    gl = application.getContext("webgl2");
 
-let vertex_shader_source = `#version 300 es
-     
-    // an attribute is an input (in) to a vertex shader.
-    // It will receive data from a buffer
-    layout (location = 0) in vec2 a_position;
-    layout (location = 1) in vec3 a_color;
-
-    out vec4 color;
-    // all shaders have a main function
-    void main() {
-     
-      // gl_Position is a special variable a vertex shader
-      // is responsible for setting
-      gl_Position = vec4(a_position, 0.0, 1.0);
-      color = vec4(a_color, 1.0);
-    }
-    `;
-
-let fragment_shader_source = `#version 300 es
-     
-    // fragment shaders don't have a default precision so we need
-    // to pick one. highp is a good default. It means "high precision"
-    precision highp float;
-
-    in vec4 color;
-
-    // we need to declare an output for the fragment shader
-    out vec4 outColor;
-     
-    void main() {
-      // Just set the output to a constant reddish-purple
-      // outColor = vec4(1, 0, 0.5, 1);
-      outColor = color;
-    }
-    `;
+    return gl;
+}
 
 function create_shader(gl, type, source)
 {
@@ -117,10 +89,68 @@ function create_program(gl, vertex_shader, fragment_shader)
     gl.deleteProgram(program);
 }
 
+function create_buffer(gl)
+{
+    return gl.createBuffer();
+}
+
+function bind_buffer(gl, buffer, type)
+{
+    return gl.bindBuffer(type, buffer);
+}
+
+function set_buffer_data(gl, data, type)
+{
+    // TODO: Parameterize gl.STATIC_DRAW
+    return gl.bufferData(type, data, gl.STATIC_DRAW);
+}
+
+function create_input_layout(gl, program, names, offsets, formats, stride, count)
+{
+    let input_layout = {
+	layout: [],
+	stride: stride,
+	count: count,
+    };
+    
+    for (let i = 0; i < count; ++i)
+    {
+	const location = gl.getAttribLocation(program, names[i]);
+	input_layout.layout.push({
+		    location: location,
+	            offset: offsets[i],
+		    format: formats[i]});
+    }
+
+    return input_layout;
+}
+
+
+function use_input_layout(gl, input_layout)
+{
+    for (let i = 0; i < input_layout.count; ++i)
+    {
+        gl.vertexAttribPointer(input_layout.layout[i].location,
+				      input_layout.layout[i].format, gl.FLOAT, false,
+				      input_layout.stride, input_layout.layout[i].offset);
+        gl.enableVertexAttribArray(input_layout.layout[i].location);	
+    }
+}
+
+function set_viewport(gl, width, height)
+{
+    gl.viewport(0, 0, width, height);
+}
+
+function clear_color(gl, r, g, b, a)
+{
+    gl.clearColor(r, g, b, a);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT);
+}
+
 function platform_create_shader(gl_reference, type, source)
 {
-    const buffer = wasm.instance.exports.memory.buffer;
-    const shader_source = convert_to_string(buffer, source);
+    const shader_source = convert_to_string(memory_buffer, source);
 
     const gl_object = get_object_from_reference(gl_reference);
     const shader = create_shader(gl_object, type, shader_source);
@@ -141,61 +171,158 @@ function platform_create_program(gl_reference, vertex_shader_reference, fragment
     return program_reference;
 }
 
-function main()
+function platform_create_buffer(gl_reference)
 {
+    const gl_object = get_object_from_reference(gl_reference);
+    const buffer = create_buffer(gl_object);
+    const buffer_reference = create_new_reference(buffer);
+
+    return buffer_reference;
+}
+
+function platform_bind_buffer(gl_reference, buffer_reference, type)
+{
+    const gl_object = get_object_from_reference(gl_reference);
+    const buffer_object = get_object_from_reference(buffer_reference);
+
+    bind_buffer(gl_object, buffer_object, type);
+}
+
+function platform_set_buffer_data(gl_reference, buffer_reference, buffer_data, buffer_size, type)
+{
+    const gl_object = get_object_from_reference(gl_reference);
+    const buffer_object = get_object_from_reference(buffer_reference);
+
+    const data = new Float32Array(memory_buffer, buffer_data, buffer_size);
+
+    bind_buffer(gl_object, buffer_object, type);
+    set_buffer_data(gl_object, data, type);
+}
+
+function platform_create_input_layout(gl_reference, program_reference, names, offsets, formats, stride, count)
+{
+    const gl_object = get_object_from_reference(gl_reference);
+    const program_object = get_object_from_reference(program_reference);
+    
+    const string_address_array = new Uint32Array(memory_buffer, names, count);
+    const offset_array = new Uint32Array(memory_buffer, offsets, count);
+    const format_array = new Uint32Array(memory_buffer, formats, count);
+    const names_array = [];
+
+    for (let i = 0; i < count; ++i)
+    {
+        names_array.push(convert_to_string(memory_buffer, string_address_array[i]));
+    }
+
+    const input_layout = create_input_layout(gl_object, program_object, names_array, offset_array, format_array, stride, count);
+    
+    return create_new_reference(input_layout);
+}
+
+function platform_use_input_layout(gl_reference, input_layout_reference)
+{
+    const gl_object = get_object_from_reference(gl_reference);
+    const input_layout_object = get_object_from_reference(input_layout_reference);
+
+    use_input_layout(gl_object, input_layout_object);
+}
+
+function platform_set_viewport(gl_reference, width, height)
+{
+    const gl_object = get_object_from_reference(gl_reference);
+
+    set_viewport(gl_object, width, height);
+}
+
+function platform_clear_color(gl_reference, r, g, b, a)
+{
+    const gl_object = get_object_from_reference(gl_reference);
+
+    clear_color(gl_object, r, g, b, a);
+}
+
+function use_program(gl, program)
+{
+    gl.useProgram(program);
+}
+
+function platform_use_program(gl_reference, program_reference)
+{
+    const gl_object = get_object_from_reference(gl_reference);
+    const program_object = get_object_from_reference(program_reference);
+
+    use_program(gl_object, program_object);
+}
+
+function draw_arrays(gl, primitive_type, offset, count)
+{
+    gl.drawArrays(primitive_type, offset, count);
+}
+
+function platform_draw_arrays(gl_reference, primitive_type, offset, count)
+{
+    const gl_object = get_object_from_reference(gl_reference);
+
+    draw_arrays(gl_object, primitive_type, offset, count);
+}
+
+// function main()
+// {
     // let vertex_shader = create_shader(gl, gl.VERTEX_SHADER, vertex_shader_source);
     // let fragment_shader = create_shader(gl, gl.FRAGMENT_SHADER, fragment_shader_source);
     // let program = create_program(gl, vertex_shader, fragment_shader);
 
-    let vertex_shader = get_object_from_reference(1);
-    let fragment_shader = get_object_from_reference(2);
-    let program = get_object_from_reference(3);
+    // let vbo = gl.createBuffer();
+    // gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
 
-    let vbo = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+    // let vertex_data = [
+    //     -0.00, +0.75, 1.0, 0.0, 0.0,
+    //     +0.75, -0.50, 0.0, 1.0, 0.0,
+    //     -0.75, -0.50, 0.0, 0.0, 1.0,
+    // ];
+    // gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertex_data), gl.STATIC_DRAW);
 
-    let vertex_data = [
-        -0.00, +0.75, 1.0, 0.0, 0.0,
-        +0.75, -0.50, 0.0, 1.0, 0.0,
-        -0.75, -0.50, 0.0, 0.0, 1.0,
-    ];
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertex_data), gl.STATIC_DRAW);
+    // let vao = gl.createVertexArray();
+    // gl.bindVertexArray(vao);
 
-    // TODO: Is it enough to use only one VAO and use it for everything? Probably, yes.
-    let vao = gl.createVertexArray();
-    gl.bindVertexArray(vao);
+    // let a_pos = 0;
+    // gl.vertexAttribPointer(a_pos, 2, gl.FLOAT, false, 5 * 4, 0);
+    // gl.enableVertexAttribArray(a_pos);
+
+    // let a_color = 1
+    // gl.vertexAttribPointer(a_color, 3, gl.FLOAT, false, 5 * 4, 2 * 4);
+    // gl.enableVertexAttribArray(a_color);
+
+    // gl.viewport(0, 0, application.width, application.height);
+    // gl.clearColor(0, 0, 0, 0);
+    // gl.clear(gl.COLOR_BUFFER_BIT);
     
-    let a_pos = 0;
-    gl.vertexAttribPointer(a_pos, 2, gl.FLOAT, false, 5 * 4, 0);
-    gl.enableVertexAttribArray(a_pos);
+    // let program = get_object_from_reference(4);
 
-    let a_color = 1
-    gl.vertexAttribPointer(a_color, 3, gl.FLOAT, false, 5 * 4, 2 * 4);
-    gl.enableVertexAttribArray(a_color);
+    // gl.useProgram(program);
 
-    gl.viewport(0, 0, application.width, application.height);
-    gl.clearColor(0, 0, 0, 0);
-    gl.clear(gl.COLOR_BUFFER_BIT);
-    gl.useProgram(program);
+    // gl.bindVertexArray(vao);
+    
+    // let primitiveType = gl.TRIANGLES;
+    // let count = 3;
+    // let offset = 0;
 
-    gl.bindVertexArray(vao);
-
-    let primitiveType = gl.TRIANGLES;
-    let count = 3;
-    let offset = 0;
-
-    gl.drawArrays(primitiveType, offset, count);
-}
-
-function create_graphics()
-{
-    return application.getContext("webgl2");
-}
+    // gl.drawArrays(primitiveType, offset, count);
+// }
 
 function platform_create_graphics()
 {
-    gl = create_graphics();
-    const gl_reference = create_new_reference(gl);
+    let gl_reference = 0;
+
+    if (!gl)
+    {
+        let gl_object = create_graphics();
+        gl_reference = create_new_reference(gl_object);
+	// TODO: Is it enough to create only one VAO, bind it at the beginning of the program
+	// and use it forever? Probably, yes. I heard many times that VAOs are pretty useless.
+	const vao = gl.createVertexArray();
+	gl.bindVertexArray(vao);
+    }
 
     return gl_reference;
 }
@@ -214,14 +341,24 @@ WebAssembly.instantiateStreaming(
 	    platform_create_graphics,
 	    platform_create_shader,
 	    platform_create_program,
+	    platform_create_buffer,
+	    platform_bind_buffer,
+	    platform_set_buffer_data,
+	    platform_create_input_layout,
+	    platform_use_input_layout,
+	    platform_set_viewport,
+	    platform_clear_color,
+	    platform_use_program,
+	    platform_draw_arrays,
 	}
     }
 ).then((w) =>
     {
 	wasm = w;
+	memory_buffer = wasm.instance.exports.memory.buffer;
 
         wasm.instance.exports.init(application.width, application.height);
-	main();
+	// main();
     }
 );
 
