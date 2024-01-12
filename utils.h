@@ -29,34 +29,12 @@ typedef double     f64;
 #define ASSERT(x) do { if (!(x)) { *(volatile int*)0; } } while (0)
 #define ARRAY_COUNT(x)      (sizeof(x) / sizeof(*(x)))
 
-#define SWAP(a, b, t)                           \
-    {                                           \
-        t temp = a;                             \
-        a = b;                                  \
-        b = temp;                               \
-    }
+#define OFFSETOF(type, member)  ((memory_size)&(((type*)0)->member))
+#define COUNTOF(type, member)  (ARRAY_COUNT(((type*)0)->member))
 
-#define DOUBLY_LINKED_LIST_INIT(sentinel)       \
-    (sentinel)->prev = (sentinel);              \
-    (sentinel)->next = (sentinel);
-
-#define DOUBLY_LINKED_LIST_INSERT(sentinel, element)    \
-    (element)->next = (sentinel)->next;                 \
-    (element)->prev = (sentinel);                       \
-    (element)->next->prev = (element);                 \
-    (element)->prev->next = (element);
-
-static inline f32 lerp(f32 min, f32 value, f32 max)
-{
-    f32 result = min + value * (max - min);
-
-    return result;
-}
-
-static inline i32 modulo(i32 a, i32 b)
-{
-    return (a % b + b) % b;
-}
+#define KILOBYTES(x) ((x) * (1024ULL))
+#define MEGABYTES(x) (KILOBYTES(x) * (1024ULL))
+#define GIGABYTES(x) (MEGABYTES(x) * (1024ULL))
 
 static inline u32 string_length(const u8* string)
 {
@@ -69,47 +47,6 @@ static inline u32 string_length(const u8* string)
     }
 
     return length;
-}
-
-static void u32_to_string(u8* string, u32 value)
-{
-    u32 number = value;
-    i32 digit_count = 0;
-
-    while (number)
-    {
-        number /= 10;
-        ++digit_count;
-    }
-
-    number = value;
-
-    if (!number)
-    {
-        ++digit_count;
-    }
-
-    string[digit_count] = 0;
-
-    while (digit_count > 0)
-    {
-        string[digit_count - 1] = (u8)(number % 10) + '0';
-        number /= 10;
-        --digit_count;
-    }
-}
-
-static u32 lfsr_rand(void)
-{
-    static u16 start_value = 0xACE1U;
-    u16 lfsr = start_value;
-    u32 bit = ((lfsr >> 0) ^ (lfsr >> 2) ^ (lfsr >> 3) ^ (lfsr >> 5) ) & 1;
-
-    lfsr = (lfsr >> 1) | (bit << 15);
-
-    ++start_value;
-    
-    return lfsr;
 }
 
 #define H_UTILS_H

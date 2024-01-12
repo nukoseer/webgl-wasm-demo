@@ -7,13 +7,13 @@ let memory_buffer = 0;
 
 // NOTE: 0 is invalid.
 let reference_id = 1;
-let references = [ 0 ];
+let references = {};
 
 function create_new_reference(object)
 {
     let id = reference_id;
     
-    references.push(object);
+    references[id] = object;
     ++reference_id;
 
     return id;
@@ -22,6 +22,11 @@ function create_new_reference(object)
 function get_object_from_reference(id)
 {
     return references[id];
+}
+
+function delete_reference(id)
+{
+    delete references[id];
 }
 
 function string_length(memory, start_address)
@@ -92,6 +97,11 @@ function create_program(gl, vertex_shader, fragment_shader)
 function create_buffer(gl)
 {
     return gl.createBuffer();
+}
+
+function delete_buffer(gl, buffer)
+{
+    gl.deleteBuffer(buffer);
 }
 
 function bind_buffer(gl, buffer, type)
@@ -180,6 +190,15 @@ function platform_create_buffer(gl_reference)
     return buffer_reference;
 }
 
+function platform_delete_buffer(gl_reference, buffer_reference)
+{
+    const gl_object = get_object_from_reference(gl_reference);
+    const buffer_object = get_object_from_reference(buffer_reference);
+
+    delete_buffer(gl_object, buffer_object);
+    delete_reference(buffer_object);
+}
+
 function platform_bind_buffer(gl_reference, buffer_reference, type)
 {
     const gl_object = get_object_from_reference(gl_reference);
@@ -193,10 +212,13 @@ function platform_set_buffer_data(gl_reference, buffer_reference, buffer_data, b
     const gl_object = get_object_from_reference(gl_reference);
     const buffer_object = get_object_from_reference(buffer_reference);
 
-    const data = new Float32Array(memory_buffer, buffer_data, buffer_size);
+    // TODO: Have no idea whether this is good idea or not?
+    let data = new Uint8Array(memory_buffer, buffer_data, buffer_size);
 
     bind_buffer(gl_object, buffer_object, type);
     set_buffer_data(gl_object, data, type);
+
+    data = null;
 }
 
 function platform_create_input_layout(gl_reference, program_reference, names, offsets, formats, stride, count)
@@ -332,6 +354,20 @@ function platform_log_integer(integer)
     console.log(integer);
 }
 
+let previous_timestamp = null;
+
+function loop(timestamp)
+{
+    if (previous_timestamp != null)
+    {
+	let delta_time = (timestamp - previous_timestamp) / 1000;
+	wasm.instance.exports.render();
+    }
+
+    previous_timestamp = timestamp;
+    window.requestAnimationFrame(loop);
+}
+
 WebAssembly.instantiateStreaming(
     fetch("./build/demo.wasm"),
     {
@@ -342,6 +378,7 @@ WebAssembly.instantiateStreaming(
 	    platform_create_shader,
 	    platform_create_program,
 	    platform_create_buffer,
+	    platform_delete_buffer,
 	    platform_bind_buffer,
 	    platform_set_buffer_data,
 	    platform_create_input_layout,
@@ -358,6 +395,8 @@ WebAssembly.instantiateStreaming(
 	memory_buffer = wasm.instance.exports.memory.buffer;
 
         wasm.instance.exports.init(application.width, application.height);
+
+	window.requestAnimationFrame(loop);
 	// main();
     }
 );
