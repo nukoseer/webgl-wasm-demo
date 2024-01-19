@@ -7,26 +7,35 @@ extern u8 __data_end;
 
 typedef struct DrawBuffer
 {
-    GraphicsHandle graphics;
-    BufferHandle buffer;
     u8* base;
     memory_size size;
     memory_size max_size;
 } DrawBuffer;
 
+typedef struct InputLayout
+{
+    InputLayoutHandle handle;
+    u32 stride;
+} InputLayout;
+
+typedef struct GraphicsState
+{
+    GraphicsHandle handle;
+
+    ShaderHandle vertex_shader_handle;
+    ShaderHandle pixel_shader_handle;
+    ProgramHandle program_handle;
+    BufferHandle vertex_buffer_handle;
+    InputLayout input_layout;
+} GraphicsState;
+
 typedef struct State
 {
     MemoryArena* arena;
-    GraphicsHandle graphics;
     u32 width;
     u32 height;
-
+    GraphicsState graphics;
     DrawBuffer* draw_buffer;
-
-    // TODO: No need to store these in this struct?
-    ShaderHandle vertex_shader;
-    ShaderHandle pixel_shader;
-    ProgramHandle program;
 } State;
 
 static State* state;
@@ -92,7 +101,7 @@ static void use_program(GraphicsHandle graphics, ProgramHandle program)
     platform_use_program(graphics, program);
 }
 
-static void draw_arrays(GraphicsHandle graphics, PrimitiveType primitive_type, u32 offset, u32 count)
+static void draw(GraphicsHandle graphics, PrimitiveType primitive_type, u32 offset, u32 count)
 {
     platform_draw_arrays(graphics, primitive_type, offset, count);
 }
@@ -102,7 +111,7 @@ static void log_integer(u32 integer)
     platform_log_integer(integer);
 }
 
-static DrawBuffer* allocate_draw_buffer(GraphicsHandle graphics, MemoryArena* arena, memory_size size)
+static DrawBuffer* allocate_draw_buffer(MemoryArena* arena, memory_size size)
 {
     DrawBuffer* draw_buffer = PUSH_STRUCT(arena, DrawBuffer);
 
@@ -110,7 +119,6 @@ static DrawBuffer* allocate_draw_buffer(GraphicsHandle graphics, MemoryArena* ar
     draw_buffer->size = 0;
     draw_buffer->base = push_size(arena, draw_buffer->max_size);
     // draw_buffer->buffer = create_buffer(graphics);
-    draw_buffer->graphics = graphics;
 
     return draw_buffer;
 }
@@ -148,27 +156,29 @@ static void draw_rectangle(DrawBuffer* draw_buffer,
         x2, y1, r, g, b,
         x2, y2, r, g, b,
     };
-
     push_draw_data(draw_buffer, &rectangle_data, sizeof(rectangle_data));
 }
 
 void update(void)
 {
-
-    
 }
 
 void render(void)
 {
+    GraphicsState* graphics = &state->graphics;
     DrawBuffer* draw_buffer = state->draw_buffer;
 
-    clear_color(draw_buffer->graphics, 0.7f, 0.584f, 0.7, 1.0f);
+    clear_color(graphics->handle, 0.7f, 0.584f, 0.7, 1.0f);
     draw_rectangle(draw_buffer, -0.25f, -0.25f, 0.5f, 0.5f, 1.0f, 0.0f, 0.0f);
     draw_rectangle(draw_buffer, 0.0f, 0.0f, 0.01f, 0.01f, 1.0f, 1.0f, 1.0f);
 
-    set_buffer_data(draw_buffer->graphics, draw_buffer->buffer, draw_buffer->base, draw_buffer->size, ARRAY_BUFFER_TYPE);
-    use_program(state->graphics, state->program);
-    draw_arrays(draw_buffer->graphics, TRIANGLE_PRIMITIVE_TYPE, 0, 12);
+    bind_buffer(graphics->handle, graphics->vertex_buffer_handle, ARRAY_BUFFER_TYPE);
+    set_buffer_data(graphics->handle, graphics->vertex_buffer_handle, draw_buffer->base, draw_buffer->size, ARRAY_BUFFER_TYPE);
+    use_input_layout(graphics->handle, graphics->input_layout.handle);
+    use_program(graphics->handle, graphics->program_handle);
+
+    ASSERT(draw_buffer->size % graphics->input_layout.stride == 0);
+    draw(graphics->handle, TRIANGLE_PRIMITIVE_TYPE, 0, draw_buffer->size / graphics->input_layout.stride);
     reset_draw_buffer(draw_buffer);
 }
 
@@ -180,6 +190,8 @@ void init(u32 width, u32 height)
     state->arena = arena;
     state->width = width;
     state->height = height;
+
+    state->draw_buffer = allocate_draw_buffer(arena, KILOBYTES(2));
 
     const u8* vertex_shader_source = (const u8*)
     "#version 300 es                              \n"
@@ -211,17 +223,12 @@ void init(u32 width, u32 height)
     "  out_color = color;                         \n"
     "}                                            \n";
 
-    state->graphics = create_graphics();
-
-    state->draw_buffer = allocate_draw_buffer(state->graphics, arena, KILOBYTES(2));
-    
-    state->vertex_shader = create_shader(state->graphics, VERTEX_SHADER_TYPE, vertex_shader_source);
-    state->pixel_shader = create_shader(state->graphics, PIXEL_SHADER_TYPE, pixel_shader_source);
-    state->program = create_program(state->graphics, state->vertex_shader, state->pixel_shader);
-
-    BufferHandle vertex_buffer = create_buffer(state->graphics);
-    state->draw_buffer->buffer = vertex_buffer;
-    bind_buffer(state->graphics, vertex_buffer, ARRAY_BUFFER_TYPE);
+    state->graphics.handle = create_graphics();
+    state->graphics.vertex_shader_handle = create_shader(state->graphics.handle, VERTEX_SHADER_TYPE, vertex_shader_source);
+    state->graphics.pixel_shader_handle = create_shader(state->graphics.handle, PIXEL_SHADER_TYPE, pixel_shader_source);
+    state->graphics.program_handle = create_program(state->graphics.handle,
+                                                    state->graphics.vertex_shader_handle, state->graphics.pixel_shader_handle);
+    state->graphics.vertex_buffer_handle = create_buffer(state->graphics.handle);
 
     typedef struct Vertex
     {
@@ -243,29 +250,23 @@ void init(u32 width, u32 height)
     //     { { -0.75f, -0.50f }, { 0.0f, 0.0f, 1.0f } },
     // };
     
-    // set_buffer_data(state->graphics, vertex_buffer, vertex_data, sizeof(vertex_data), ARRAY_BUFFER_TYPE);
-
     const char* input_layout_names[] = { "a_position", "a_color" };
     u32 input_layout_offsets[] = { OFFSETOF(Vertex, position), OFFSETOF(Vertex, color) };
     u32 input_layout_formats[] = { COUNTOF(Vertex, position), COUNTOF(Vertex, color) };
 
-    InputLayoutHandle input_layout = create_input_layout(state->graphics, state->program,
-                                                         input_layout_names, input_layout_offsets, input_layout_formats,
-                                                         sizeof(Vertex), ARRAY_COUNT(input_layout_names));
-    use_input_layout(state->graphics, input_layout);
+    state->graphics.input_layout.handle = create_input_layout(state->graphics.handle, state->graphics.program_handle,
+                                                              input_layout_names, input_layout_offsets, input_layout_formats,
+                                                              sizeof(Vertex), ARRAY_COUNT(input_layout_names));
+    state->graphics.input_layout.stride = sizeof(Vertex);
 
-    set_viewport(state->graphics, state->width, state->height);
-    clear_color(state->graphics, 0.392f, 0.584f, 0.929f, 1.0f);
-
-    // use_program(state->graphics, state->program);
-    // draw_arrays(state->graphics, TRIANGLE_PRIMITIVE_TYPE, 0, 3);
+    set_viewport(state->graphics.handle, state->width, state->height);
 
     log_integer(width);
     log_integer(height);
-    log_integer(state->graphics);
-    log_integer(state->vertex_shader);
-    log_integer(state->pixel_shader);
-    log_integer(state->program);
-    log_integer(vertex_buffer);
-    log_integer(input_layout);
+    log_integer(state->graphics.handle);
+    log_integer(state->graphics.vertex_shader_handle);
+    log_integer(state->graphics.pixel_shader_handle);
+    log_integer(state->graphics.program_handle);
+    log_integer(state->graphics.vertex_buffer_handle);
+    log_integer(state->graphics.input_layout.handle);
 }
