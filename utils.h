@@ -26,7 +26,9 @@ typedef double     f64;
 #define TRUE       (1)
 #define FALSE      (0)
 
-#define ASSERT(x) do { if (!(x)) { *(volatile int*)0; } } while (0)
+void platform_throw_error(const u8* text);
+
+#define ASSERT(x) do { if (!(x)) { platform_throw_error((u8*)#x); (volatile int*)0; } } while (0)
 #define ARRAY_COUNT(x)      (sizeof(x) / sizeof(*(x)))
 
 #define OFFSETOF(type, member)  ((memory_size)&(((type*)0)->member))

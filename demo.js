@@ -158,6 +158,21 @@ function clear_color(gl, r, g, b, a)
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT);
 }
 
+function use_program(gl, program)
+{
+    gl.useProgram(program);
+}
+
+function get_uniform_location(gl, program, name)
+{
+    return gl.getUniformLocation(program, name);
+}
+
+function set_uniform_2f(gl, uniform, f1, f2)
+{
+    return gl.uniform2f(uniform, f1, f2);
+}
+
 function platform_create_shader(gl_reference, type, source)
 {
     const shader_source = convert_to_string(memory_buffer, source);
@@ -263,17 +278,31 @@ function platform_clear_color(gl_reference, r, g, b, a)
     clear_color(gl_object, r, g, b, a);
 }
 
-function use_program(gl, program)
-{
-    gl.useProgram(program);
-}
-
 function platform_use_program(gl_reference, program_reference)
 {
     const gl_object = get_object_from_reference(gl_reference);
     const program_object = get_object_from_reference(program_reference);
 
     use_program(gl_object, program_object);
+}
+
+function platform_get_uniform_location(gl_reference, program_reference, name)
+{
+    const gl_object = get_object_from_reference(gl_reference);
+    const program_object = get_object_from_reference(program_reference);
+    const uniform_name = convert_to_string(memory_buffer, name);
+    const uniform = get_uniform_location(gl_object, program_object, uniform_name);
+    const uniform_reference = create_new_reference(uniform);
+    
+    return uniform_reference;
+}
+
+function platform_set_uniform_2f(gl_reference, uniform_reference, f1, f2)
+{
+    const gl_object = get_object_from_reference(gl_reference);
+    const uniform_object = get_object_from_reference(uniform_reference);
+    
+    set_uniform_2f(gl_object, uniform_object, f1, f2);
 }
 
 function draw_arrays(gl, primitive_type, offset, count)
@@ -349,9 +378,15 @@ function platform_create_graphics()
     return gl_reference;
 }
 
-function platform_log_integer(integer)
+function platform_log_number(number)
 {
-    console.log(integer);
+    console.log(number);
+}
+
+function platform_throw_error(text)
+{
+    const string = convert_to_string(memory_buffer, text);
+    throw new Error(string);
 }
 
 let previous_timestamp = null;
@@ -361,6 +396,7 @@ function loop(timestamp)
     if (previous_timestamp != null)
     {
 	let delta_time = (timestamp - previous_timestamp) / 1000;
+	wasm.instance.exports.update(delta_time);
 	wasm.instance.exports.render();
     }
 
@@ -373,7 +409,8 @@ WebAssembly.instantiateStreaming(
     {
 	env:
 	{
-	    platform_log_integer,
+	    platform_log_number,
+	    platform_throw_error,
 	    platform_create_graphics,
 	    platform_create_shader,
 	    platform_create_program,
@@ -386,6 +423,8 @@ WebAssembly.instantiateStreaming(
 	    platform_set_viewport,
 	    platform_clear_color,
 	    platform_use_program,
+	    platform_get_uniform_location,
+            platform_set_uniform_2f,
 	    platform_draw_arrays,
 	}
     }
@@ -400,4 +439,3 @@ WebAssembly.instantiateStreaming(
 	// main();
     }
 );
-

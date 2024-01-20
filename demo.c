@@ -101,14 +101,24 @@ static void use_program(GraphicsHandle graphics, ProgramHandle program)
     platform_use_program(graphics, program);
 }
 
+static UniformHandle get_uniform_location(GraphicsHandle graphics, ProgramHandle program, const u8* name)
+{
+    return platform_get_uniform_location(graphics, program, name);
+}
+
+static void set_uniform_2f(GraphicsHandle graphics, UniformHandle uniform, f32 f1, f32 f2)
+{
+    platform_set_uniform_2f(graphics, uniform, f1, f2);
+}
+
 static void draw(GraphicsHandle graphics, PrimitiveType primitive_type, u32 offset, u32 count)
 {
     platform_draw_arrays(graphics, primitive_type, offset, count);
 }
 
-static void log_integer(u32 integer)
+static void log_number(f32 number)
 {
-    platform_log_integer(integer);
+    platform_log_number(number);
 }
 
 static DrawBuffer* allocate_draw_buffer(MemoryArena* arena, memory_size size)
@@ -117,7 +127,7 @@ static DrawBuffer* allocate_draw_buffer(MemoryArena* arena, memory_size size)
 
     draw_buffer->max_size = size;
     draw_buffer->size = 0;
-    draw_buffer->base = push_size(arena, draw_buffer->max_size);
+    draw_buffer->base = PUSH_SIZE(arena, draw_buffer->max_size);
     // draw_buffer->buffer = create_buffer(graphics);
 
     return draw_buffer;
@@ -149,18 +159,38 @@ static void draw_rectangle(DrawBuffer* draw_buffer,
 
     f32 rectangle_data[] =
     {
-        x1, y1, r, g, b,
-        x2, y1, r, g, b,
-        x1, y2, r, g, b,
-        x1, y2, r, g, b,
-        x2, y1, r, g, b,
-        x2, y2, r, g, b,
+        x1, y1, 0.0f, 0.0f, r, g, b,
+        x2, y1, 1.0f, 0.0f, r, g, b,
+        x1, y2, 0.0f, 1.0f, r, g, b,
+        x1, y2, 0.0f, 1.0f, r, g, b,
+        x2, y1, 1.0f, 0.0f, r, g, b,
+        x2, y2, 1.0f, 1.0f, r, g, b,
     };
     push_draw_data(draw_buffer, &rectangle_data, sizeof(rectangle_data));
 }
 
-void update(void)
+typedef struct Rectangle
 {
+    f32 x, y;
+    f32 width, height;
+} Rectangle;
+
+static Rectangle rectangle[2];
+
+void update(f32 delta_time)
+{
+    // DrawBuffer* draw_buffer = state->draw_buffer;
+
+    for (u32 i = 0; i < ARRAY_COUNT(rectangle); ++i)
+    {
+        Rectangle* rect = rectangle + i;
+        
+        if (rect->x >= (f32)state->width)
+        {
+            rect->x = 0.0f;
+        }
+        rect->x += 0.80f;   
+    }
 }
 
 void render(void)
@@ -168,9 +198,11 @@ void render(void)
     GraphicsState* graphics = &state->graphics;
     DrawBuffer* draw_buffer = state->draw_buffer;
 
-    clear_color(graphics->handle, 0.7f, 0.584f, 0.7, 1.0f);
-    draw_rectangle(draw_buffer, -0.25f, -0.25f, 0.5f, 0.5f, 1.0f, 0.0f, 0.0f);
-    draw_rectangle(draw_buffer, 0.0f, 0.0f, 0.01f, 0.01f, 1.0f, 1.0f, 1.0f);
+    clear_color(graphics->handle, 0.0f, 0.0f, 0.0f, 1.0f);
+    draw_rectangle(draw_buffer, rectangle[0].x, rectangle[0].y, rectangle[0].width, rectangle[0].height, 1.0f, 0.0f, 0.0f);
+    draw_rectangle(draw_buffer, rectangle[1].x, rectangle[1].y, rectangle[1].width, rectangle[1].height, 1.0f, 0.0f, 0.0f);
+    // draw_rectangle(draw_buffer, -0.25f, -0.25f, 0.5f, 0.5f, 1.0f, 0.0f, 0.0f);
+    // draw_rectangle(draw_buffer, 0.0f, 0.0f, 0.01f, 0.01f, 1.0f, 1.0f, 1.0f);
 
     bind_buffer(graphics->handle, graphics->vertex_buffer_handle, ARRAY_BUFFER_TYPE);
     set_buffer_data(graphics->handle, graphics->vertex_buffer_handle, draw_buffer->base, draw_buffer->size, ARRAY_BUFFER_TYPE);
@@ -182,30 +214,31 @@ void render(void)
     reset_draw_buffer(draw_buffer);
 }
 
-void init(u32 width, u32 height)
+void graphics_init(void)
 {
-    MemoryArena* arena = get_memory_arena(&__heap_base, &__heap_base - &__data_end);
-
-    state = PUSH_STRUCT(arena, State);
-    state->arena = arena;
-    state->width = width;
-    state->height = height;
-
-    state->draw_buffer = allocate_draw_buffer(arena, KILOBYTES(2));
+    state->draw_buffer = allocate_draw_buffer(state->arena, KILOBYTES(2));
 
     const u8* vertex_shader_source = (const u8*)
-    "#version 300 es                              \n"
-    "                                             \n"
-    "layout (location = 0) in vec2 a_position;    \n"
-    "layout (location = 1) in vec3 a_color;       \n"
-    "                                             \n"
-    "out vec4 color;                              \n"
-    "                                             \n"
-    "void main()                                  \n"
-    "{                                            \n"
-    "  gl_Position = vec4(a_position, 0.0, 1.0);  \n"
-    "  color = vec4(a_color, 1.0);                \n"
-    "}                                            \n";
+    "#version 300 es                                  \n"
+    "                                                 \n"
+    "layout (location = 0) in vec2 a_position;        \n"
+    "layout (location = 1) in vec2 a_uv;              \n"
+    "layout (location = 2) in vec3 a_color;           \n"
+    "                                                 \n"
+    "uniform vec2 u_resolution;                       \n"
+    "                                                 \n"
+    "out vec4 color;                                  \n"
+    "out vec2 uv;                                     \n"
+    "                                                 \n"
+    "void main()                                      \n"
+    "{                                                \n"
+    "  vec2 zero_to_one = a_position / u_resolution;  \n"
+    "  vec2 clip_space = (zero_to_one * 2.0) - 1.0;   \n"
+    "                                                 \n"
+    "  gl_Position = vec4(clip_space, 0.0, 1.0);      \n"
+    "  color = vec4(a_color, 1.0);                    \n"
+    "  uv = a_uv;                                     \n"
+    "}                                                \n";
 
     const u8* pixel_shader_source = (const u8*)
     "#version 300 es                              \n"
@@ -213,15 +246,23 @@ void init(u32 width, u32 height)
     "precision highp float;                       \n"
     "                                             \n"
     "in vec4 color;                               \n"
+    "in vec2 uv;                                  \n"
     "                                             \n"
     "out vec4 out_color;                          \n"
     "                                             \n"
     "void main()                                  \n"
     "{                                            \n"
-    // "  vec4 new_color = color;                    \n"
-    // "  new_color.w = 0.5;                         \n"
-    "  out_color = color;                         \n"
+    "  vec2 n_uv = uv * 2.0 - 1.0;                               \n"
+    "  vec2 border_size = vec2(1.5);                                               \n"
+    "  vec2 rectangle_size = vec2(1.0) - border_size;                                               \n"
+    "                                                 \n"
+    "  float distance_field = length(max(abs(n_uv) - rectangle_size, 0.0) / border_size);                                               \n"
+    "  float alpha = 1.0 - distance_field;                                               \n"
+    "                                                  \n"
+    "  out_color = vec4(vec3(color), distance_field);           \n"
+    // "  out_color = color;                         \n"
     "}                                            \n";
+
 
     state->graphics.handle = create_graphics();
     state->graphics.vertex_shader_handle = create_shader(state->graphics.handle, VERTEX_SHADER_TYPE, vertex_shader_source);
@@ -233,6 +274,7 @@ void init(u32 width, u32 height)
     typedef struct Vertex
     {
         f32 position[2];
+        f32 uv[2];
         f32 color[3];
     } Vertex;
     
@@ -250,23 +292,47 @@ void init(u32 width, u32 height)
     //     { { -0.75f, -0.50f }, { 0.0f, 0.0f, 1.0f } },
     // };
     
-    const char* input_layout_names[] = { "a_position", "a_color" };
-    u32 input_layout_offsets[] = { OFFSETOF(Vertex, position), OFFSETOF(Vertex, color) };
-    u32 input_layout_formats[] = { COUNTOF(Vertex, position), COUNTOF(Vertex, color) };
+    const char* input_layout_names[] = { "a_position", "a_uv", "a_color" };
+    u32 input_layout_offsets[] = { OFFSETOF(Vertex, position), OFFSETOF(Vertex, uv), OFFSETOF(Vertex, color) };
+    u32 input_layout_formats[] = { COUNTOF(Vertex, position), COUNTOF(Vertex, uv), COUNTOF(Vertex, color) };
 
     state->graphics.input_layout.handle = create_input_layout(state->graphics.handle, state->graphics.program_handle,
                                                               input_layout_names, input_layout_offsets, input_layout_formats,
                                                               sizeof(Vertex), ARRAY_COUNT(input_layout_names));
     state->graphics.input_layout.stride = sizeof(Vertex);
 
+    use_program(state->graphics.handle, state->graphics.program_handle);
+    UniformHandle uniform_handle = get_uniform_location(state->graphics.handle, state->graphics.program_handle, (u8*)"u_resolution");
+    set_uniform_2f(state->graphics.handle, uniform_handle, state->width, state->height);
+    
     set_viewport(state->graphics.handle, state->width, state->height);
 
-    log_integer(width);
-    log_integer(height);
-    log_integer(state->graphics.handle);
-    log_integer(state->graphics.vertex_shader_handle);
-    log_integer(state->graphics.pixel_shader_handle);
-    log_integer(state->graphics.program_handle);
-    log_integer(state->graphics.vertex_buffer_handle);
-    log_integer(state->graphics.input_layout.handle);
+    log_number(state->graphics.handle);
+    log_number(state->graphics.vertex_shader_handle);
+    log_number(state->graphics.pixel_shader_handle);
+    log_number(state->graphics.program_handle);
+    log_number(state->graphics.vertex_buffer_handle);
+    log_number(state->graphics.input_layout.handle);
+    log_number(uniform_handle);
+}
+
+void init(u32 width, u32 height)
+{
+    MemoryArena* arena = get_memory_arena(&__heap_base, &__heap_base - &__data_end);
+
+    state = PUSH_STRUCT(arena, State);
+    state->arena = arena;
+    state->width = width;
+    state->height = height;
+
+    graphics_init();
+
+    rectangle[0].x = 0.0f;
+    rectangle[0].y = 10.0f;
+    rectangle[0].width = 40.0f;
+    rectangle[0].height = 40.0f;
+    rectangle[1].x = 110.0f;
+    rectangle[1].y = 10.0f;
+    rectangle[1].width = 40.0f;
+    rectangle[1].height = 40.0f;
 }
