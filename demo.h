@@ -35,7 +35,7 @@ ProgramHandle platform_create_program(GraphicsHandle graphics, ShaderHandle vert
 BufferHandle platform_create_buffer(GraphicsHandle graphics);
 void platform_delete_buffer(GraphicsHandle graphics, BufferHandle buffer);
 void platform_bind_buffer(GraphicsHandle graphics, BufferHandle buffer, BufferType type);
-void platform_set_buffer_data(GraphicsHandle graphics, BufferHandle buffer, const void* buffer_data, u32 buffer_size, BufferType type);
+void platform_set_buffer_data(GraphicsHandle graphics, const void* buffer_data, u32 buffer_size, BufferType type);
 InputLayoutHandle platform_create_input_layout(GraphicsHandle graphics, ProgramHandle program,
                                                const char** names, const u32* offsets, const u32* formats, u32 stride, u32 count);
 void platform_use_input_layout(GraphicsHandle graphics, InputLayoutHandle input_layout);

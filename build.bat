@@ -9,7 +9,7 @@ set common_compiler_flags=--target=wasm32 -nostdlib -Wall -Werror -Wno-unused-fu
 
 set debug_linker_flags=
 set release_linker_flags=-Wl,--lto-O3
-set common_linker_flags=-Wl,--no-entry -Wl,--allow-undefined -Wl,--export=update -Wl,--export=render -Wl,--export=init
+set common_linker_flags=-Wl,--no-entry -Wl,--allow-undefined -Wl,--export=render -Wl,--export=init
 
 set debug=yes
 

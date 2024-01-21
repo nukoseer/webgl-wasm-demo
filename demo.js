@@ -222,15 +222,13 @@ function platform_bind_buffer(gl_reference, buffer_reference, type)
     bind_buffer(gl_object, buffer_object, type);
 }
 
-function platform_set_buffer_data(gl_reference, buffer_reference, buffer_data, buffer_size, type)
+function platform_set_buffer_data(gl_reference, buffer_data, buffer_size, type)
 {
     const gl_object = get_object_from_reference(gl_reference);
-    const buffer_object = get_object_from_reference(buffer_reference);
 
     // TODO: Have no idea whether this is good idea or not?
     let data = new Uint8Array(memory_buffer, buffer_data, buffer_size);
 
-    bind_buffer(gl_object, buffer_object, type);
     set_buffer_data(gl_object, data, type);
 
     data = null;
@@ -317,50 +315,6 @@ function platform_draw_arrays(gl_reference, primitive_type, offset, count)
     draw_arrays(gl_object, primitive_type, offset, count);
 }
 
-// function main()
-// {
-    // let vertex_shader = create_shader(gl, gl.VERTEX_SHADER, vertex_shader_source);
-    // let fragment_shader = create_shader(gl, gl.FRAGMENT_SHADER, fragment_shader_source);
-    // let program = create_program(gl, vertex_shader, fragment_shader);
-
-    // let vbo = gl.createBuffer();
-    // gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
-
-    // let vertex_data = [
-    //     -0.00, +0.75, 1.0, 0.0, 0.0,
-    //     +0.75, -0.50, 0.0, 1.0, 0.0,
-    //     -0.75, -0.50, 0.0, 0.0, 1.0,
-    // ];
-    // gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertex_data), gl.STATIC_DRAW);
-
-    // let vao = gl.createVertexArray();
-    // gl.bindVertexArray(vao);
-
-    // let a_pos = 0;
-    // gl.vertexAttribPointer(a_pos, 2, gl.FLOAT, false, 5 * 4, 0);
-    // gl.enableVertexAttribArray(a_pos);
-
-    // let a_color = 1
-    // gl.vertexAttribPointer(a_color, 3, gl.FLOAT, false, 5 * 4, 2 * 4);
-    // gl.enableVertexAttribArray(a_color);
-
-    // gl.viewport(0, 0, application.width, application.height);
-    // gl.clearColor(0, 0, 0, 0);
-    // gl.clear(gl.COLOR_BUFFER_BIT);
-    
-    // let program = get_object_from_reference(4);
-
-    // gl.useProgram(program);
-
-    // gl.bindVertexArray(vao);
-    
-    // let primitiveType = gl.TRIANGLES;
-    // let count = 3;
-    // let offset = 0;
-
-    // gl.drawArrays(primitiveType, offset, count);
-// }
-
 function platform_create_graphics()
 {
     let gl_reference = 0;
@@ -389,18 +343,9 @@ function platform_throw_error(text)
     throw new Error(string);
 }
 
-let previous_timestamp = null;
-
 function loop(timestamp)
 {
-    if (previous_timestamp != null)
-    {
-	let delta_time = (timestamp - previous_timestamp) / 1000;
-	wasm.instance.exports.update(delta_time);
-	wasm.instance.exports.render();
-    }
-
-    previous_timestamp = timestamp;
+    wasm.instance.exports.render();
     window.requestAnimationFrame(loop);
 }
 
@@ -436,6 +381,5 @@ WebAssembly.instantiateStreaming(
         wasm.instance.exports.init(application.width, application.height);
 
 	window.requestAnimationFrame(loop);
-	// main();
     }
 );

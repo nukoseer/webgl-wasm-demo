@@ -38,18 +38,5 @@ void platform_throw_error(const u8* text);
 #define MEGABYTES(x) (KILOBYTES(x) * (1024ULL))
 #define GIGABYTES(x) (MEGABYTES(x) * (1024ULL))
 
-static inline u32 string_length(const u8* string)
-{
-    u32 length = 0;
-
-    while (string && *string)
-    {
-        ++length;
-        ++string;
-    }
-
-    return length;
-}
-
 #define H_UTILS_H
 #endif
