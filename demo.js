@@ -5,6 +5,7 @@ let gl = 0;
 let wasm = null;
 let memory_buffer = 0;
 
+// https://github.com/WebAssembly/interface-types/issues/18#issuecomment-430605795
 // NOTE: 0 is invalid.
 let reference_id = 1;
 let references = {};
